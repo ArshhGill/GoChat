@@ -20,6 +20,13 @@ const (
 	TYPE = "tcp"
 )
 
+type AppState int
+
+const (
+	LOGIN = iota
+	CHAT
+)
+
 func writeToServer(chatMessage ChatMsg, conn *net.TCPConn) {
 	_, err := conn.Write([]byte(chatMessage.message))
 	if err != nil {
@@ -84,6 +91,94 @@ func Render() {
 
 type model struct {
 	textarea textarea.Model
+	chat     chatModel
+	appState AppState
+
+	vh int
+	vw int
+}
+
+func initialModel() model {
+	ta := textarea.New()
+	ta.Placeholder = "Provide an username..."
+	ta.Focus()
+
+	ta.Prompt = "┃ "
+	ta.CharLimit = 30
+
+	ta.SetWidth(30)
+	ta.SetHeight(3)
+
+	// Remove cursor line styling
+	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
+
+	ta.ShowLineNumbers = false
+
+	return model{
+		textarea: ta,
+		appState: LOGIN,
+	}
+}
+
+func (m model) Init() tea.Cmd {
+	return tea.Batch(
+		textarea.Blink,
+		tea.EnterAltScreen,
+	)
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var (
+		tiCmd tea.Cmd
+		vpCmd tea.Cmd
+	)
+
+	m.textarea, tiCmd = m.textarea.Update(msg)
+
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.vh = msg.Height
+		m.vw = msg.Width
+
+		return m, tea.Batch(
+			textarea.Blink,
+			tea.EnterAltScreen,
+		)
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyCtrlC, tea.KeyEsc:
+			fmt.Println(m.textarea.Value())
+			return m, tea.Quit
+		case tea.KeyEnter:
+			username := m.textarea.Value()
+			chatModel := initialChatModel(username, m.vh, m.vw)
+			return chatModel, tea.Batch(
+				textarea.Blink,
+				readFromServer(chatModel.conn, chatModel.chatMessageChan),
+				waitForMessage(chatModel.chatMessageChan),
+			)
+		}
+	}
+
+	return m, tea.Batch(tiCmd, vpCmd)
+}
+
+func (m model) View() string {
+	str := fmt.Sprintf(
+		"%s\n",
+		m.textarea.View(),
+	) + "\n\n"
+
+	horizontalPadding := (m.vw - lipgloss.Width(lipgloss.NewStyle().Render(str))) / 2
+	verticalPadding := (m.vh - 1) / 2
+
+	return lipgloss.NewStyle().
+		Padding(verticalPadding, horizontalPadding).
+		Render(str)
+}
+
+type chatModel struct {
+	textarea textarea.Model
 	err      error
 
 	chatMessageChan chan ChatMsg
@@ -95,7 +190,7 @@ type model struct {
 	messages    []string
 }
 
-func initialModel() model {
+func initialChatModel(username string, vh int, _ /*vw*/ int) chatModel {
 	ta := textarea.New()
 	ta.Placeholder = "Send a message..."
 	ta.Focus()
@@ -111,7 +206,7 @@ func initialModel() model {
 
 	ta.ShowLineNumbers = false
 
-	vp := viewport.New(30, 5)
+	vp := viewport.New(30, vh-ta.Height()-5)
 
 	// FIXME: Not working :( But atleast it stopped the j and k thing
 	vp.KeyMap.Up = key.NewBinding(
@@ -124,23 +219,29 @@ func initialModel() model {
 		key.WithHelp("↓/pgdown", "move down"),
 	)
 
-	vp.SetContent(`type /connect {username} to connect to the server :)`)
+	vp.SetContent("Welcome to the chat room!\nType a message and press Enter to send.")
 
 	ta.KeyMap.InsertNewline.SetEnabled(false)
 
-	return model{
+	return chatModel{
 		textarea:    ta,
 		messages:    []string{},
 		viewport:    vp,
 		senderStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("1")),
+
+		username: strings.ReplaceAll(username, "\n", ""),
+
+		conn: Serve(),
+
+		chatMessageChan: make(chan ChatMsg),
 	}
 }
 
-func (m model) Init() tea.Cmd {
-	return tea.Batch() // goes to fullscreen
+func (m chatModel) Init() tea.Cmd {
+	return tea.Batch()
 }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var (
 		tiCmd tea.Cmd
 		vpCmd tea.Cmd
@@ -150,49 +251,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.viewport, vpCmd = m.viewport.Update(msg)
 
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.viewport.Height = msg.Height - m.textarea.Height() - 6
-		m.viewport.Width = msg.Width
-
-        m.textarea.SetWidth(msg.Width)
-
-		return m, tea.Batch(
-			textarea.Blink,
-			tea.EnterAltScreen,
-		)
-
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
 			fmt.Println(m.textarea.Value())
 			return m, tea.Quit
 		case tea.KeyEnter:
-			if m.conn == nil {
-				cmd := strings.Split(m.textarea.Value(), " ")
-
-				if len(cmd) < 2 || cmd[0] != "/connect" {
-					m.viewport.SetContent("Incorrect command. Type /connect {username} to connect to the server")
-					m.textarea.Reset()
-
-					return m, textarea.Blink
-				}
-
-				m.chatMessageChan = make(chan ChatMsg)
-				m.conn = Serve()
-
-				m.username = cmd[1]
-
-				m.viewport.SetContent("Welcome to the chat room!\nType a message and press Enter to send.")
-
-				m.textarea.Reset()
-
-				return m, tea.Batch(
-					textarea.Blink,
-					readFromServer(m.conn, m.chatMessageChan),
-					waitForMessage(m.chatMessageChan),
-				)
-			}
-
 			text := m.textarea.Value()
 
 			go writeToServer(ChatMsg{message: m.username + ": " + text}, m.conn)
@@ -215,7 +279,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(tiCmd, vpCmd)
 }
 
-func (m model) View() string {
+func (m chatModel) View() string {
 	str := fmt.Sprintf(
 		"%s\n\n%s",
 		m.viewport.View(),
