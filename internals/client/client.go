@@ -89,6 +89,7 @@ type model struct {
 	conn            *net.TCPConn
 
 	senderStyle lipgloss.Style
+	username    string
 	viewport    viewport.Model
 	messages    []string
 }
@@ -111,8 +112,7 @@ func initialModel() model {
 
 	vp := viewport.New(30, 5)
 
-	vp.SetContent(`Welcome to the chat room!
-Type a message and press Enter to send.`)
+	vp.SetContent(`type /connect {username} to connect to the server :)`)
 
 	ta.KeyMap.InsertNewline.SetEnabled(false)
 
@@ -121,10 +121,6 @@ Type a message and press Enter to send.`)
 		messages:    []string{},
 		viewport:    vp,
 		senderStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("5")),
-
-		chatMessageChan: make(chan ChatMsg),
-
-		conn: Serve(),
 	}
 }
 
@@ -146,11 +142,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		fmt.Println(msg.Height, m.textarea.Height())
 
 		m.viewport.Height = msg.Height / 2
+		m.viewport.Width = msg.Width
 
 		return m, tea.Batch(
 			textarea.Blink,
-			readFromServer(m.conn, m.chatMessageChan),
-			waitForMessage(m.chatMessageChan),
 			tea.EnterAltScreen,
 		)
 
@@ -160,9 +155,35 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			fmt.Println(m.textarea.Value())
 			return m, tea.Quit
 		case tea.KeyEnter:
+			if m.conn == nil {
+				cmd := strings.Split(m.textarea.Value(), " ")
+
+				if len(cmd) < 2 || cmd[0] != "/connect" {
+					m.viewport.SetContent("Incorrect command. Type /connect {username} to connect to the server")
+					m.textarea.Reset()
+
+					return m, textarea.Blink
+				}
+
+				m.chatMessageChan = make(chan ChatMsg)
+				m.conn = Serve()
+
+				m.username = cmd[1]
+
+				m.viewport.SetContent("Welcome to the chat room!\nType a message and press Enter to send.")
+
+				m.textarea.Reset()
+
+				return m, tea.Batch(
+					textarea.Blink,
+					readFromServer(m.conn, m.chatMessageChan),
+					waitForMessage(m.chatMessageChan),
+				)
+			}
+
 			text := m.textarea.Value()
 
-			go writeToServer(ChatMsg{message: text}, m.conn)
+			go writeToServer(ChatMsg{message: m.username + ": " + text}, m.conn)
 
 			m.messages = append(m.messages, m.senderStyle.Render("You: ")+text)
 			m.viewport.SetContent(strings.Join(m.messages, "\n"))
@@ -171,7 +192,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case ChatMsg:
 
-		m.messages = append(m.messages /*,m.senderStyle.Render("You: ")+*/, msg.message)
+		m.messages = append(m.messages, msg.message)
 		m.viewport.SetContent(strings.Join(m.messages, "\n"))
 		m.textarea.Reset()
 		m.viewport.GotoBottom()
