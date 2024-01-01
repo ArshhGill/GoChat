@@ -18,6 +18,6 @@ func main() {
 	case "server":
 		server.Serve()
 	case "client":
-		client.Serve()
+		client.Render()
 	}
 }
