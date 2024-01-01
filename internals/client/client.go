@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -112,6 +113,17 @@ func initialModel() model {
 
 	vp := viewport.New(30, 5)
 
+	// FIXME: Not working :( But atleast it stopped the j and k thing
+	vp.KeyMap.Up = key.NewBinding(
+		key.WithKeys("pgup", "up"),        // actual keybindings
+		key.WithHelp("↑/pgup", "move up"), // corresponding help text
+	)
+
+	vp.KeyMap.Down = key.NewBinding(
+		key.WithKeys("pgdown", "down"),
+		key.WithHelp("↓/pgdown", "move down"),
+	)
+
 	vp.SetContent(`type /connect {username} to connect to the server :)`)
 
 	ta.KeyMap.InsertNewline.SetEnabled(false)
@@ -120,7 +132,7 @@ func initialModel() model {
 		textarea:    ta,
 		messages:    []string{},
 		viewport:    vp,
-		senderStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("5")),
+		senderStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("1")),
 	}
 }
 
@@ -139,10 +151,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		fmt.Println(msg.Height, m.textarea.Height())
-
-		m.viewport.Height = msg.Height / 2
+		m.viewport.Height = msg.Height - m.textarea.Height() - 6
 		m.viewport.Width = msg.Width
+
+        m.textarea.SetWidth(msg.Width)
 
 		return m, tea.Batch(
 			textarea.Blink,
@@ -204,9 +216,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	return fmt.Sprintf(
+	str := fmt.Sprintf(
 		"%s\n\n%s",
 		m.viewport.View(),
 		m.textarea.View(),
 	) + "\n\n"
+
+	return str
 }
