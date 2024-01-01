@@ -104,10 +104,10 @@ func initialModel() model {
 	ta.Focus()
 
 	ta.Prompt = "┃ "
-	ta.CharLimit = 30
+	ta.CharLimit = 20
 
 	ta.SetWidth(30)
-	ta.SetHeight(3)
+	ta.SetHeight(1)
 
 	// Remove cursor line styling
 	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
@@ -190,7 +190,7 @@ type chatModel struct {
 	messages    []string
 }
 
-func initialChatModel(username string, vh int, _ /*vw*/ int) chatModel {
+func initialChatModel(username string, vh int, vw int) chatModel {
 	ta := textarea.New()
 	ta.Placeholder = "Send a message..."
 	ta.Focus()
@@ -198,7 +198,7 @@ func initialChatModel(username string, vh int, _ /*vw*/ int) chatModel {
 	ta.Prompt = "┃ "
 	ta.CharLimit = 280
 
-	ta.SetWidth(30)
+	ta.SetWidth(vw)
 	ta.SetHeight(3)
 
 	// Remove cursor line styling
@@ -206,7 +206,7 @@ func initialChatModel(username string, vh int, _ /*vw*/ int) chatModel {
 
 	ta.ShowLineNumbers = false
 
-	vp := viewport.New(30, vh-ta.Height()-5)
+	vp := viewport.New(vw, vh-ta.Height()-5)
 
 	// FIXME: Not working :( But atleast it stopped the j and k thing
 	vp.KeyMap.Up = key.NewBinding(
@@ -267,7 +267,6 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.GotoBottom()
 		}
 	case ChatMsg:
-
 		m.messages = append(m.messages, msg.message)
 		m.viewport.SetContent(strings.Join(m.messages, "\n"))
 		m.textarea.Reset()
