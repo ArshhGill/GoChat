@@ -7,7 +7,6 @@ import (
 )
 
 const (
-	SERVER_IP   = "127.0.0.1"
 	SERVER_PORT = 4000
 )
 
@@ -96,7 +95,7 @@ func handleClient(client *Client, eventChan chan ClientEvent) {
 	}
 }
 
-func Serve() {
+func Serve(SERVER_IP string) {
 	connListener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", SERVER_IP, SERVER_PORT))
 	if err != nil {
 		log.Fatalf("Could not start the server: %s", err)

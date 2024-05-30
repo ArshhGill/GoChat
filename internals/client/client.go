@@ -15,10 +15,11 @@ import (
 )
 
 const (
-	HOST = "127.0.0.1"
 	PORT = "4000"
 	TYPE = "tcp"
 )
+
+var HOST string
 
 type AppState int
 
@@ -81,7 +82,9 @@ type ChatMsg struct {
 	message string
 }
 
-func Render() {
+func Render(ipAddr string) {
+	HOST = ipAddr
+
 	p := tea.NewProgram(initialModel())
 
 	if _, err := p.Run(); err != nil {
