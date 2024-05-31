@@ -1,5 +1,6 @@
 ## ideation list ig
 
+- [ ] server messages / announcements
 - [ ] validation
 - [ ] error handling
 - [ ] rate limits
